@@ -213,7 +213,7 @@ task :fifth_step_filter do
   fourth_step_filter_data.each do |stock_symbol, stock_data|
     ma5, ma20 = [ma5(stock_data), ma20(stock_data)]
 
-    next processed_data.delete(stock_symbol) unless (ma5 / ma20).between?(1.05, 1.1) # 週線跟月線差太遠，就代表漲一段了
+    next processed_data.delete(stock_symbol) unless (ma5 / ma20).between?(1.0, 1.1) # 週線跟月線差太遠，就代表漲一段了
 
     puts "保留 #{stock_symbol} #{stock_data['company_name']}"
   end
