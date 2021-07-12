@@ -184,11 +184,11 @@ task :fourth_step_filter do
   puts "原始資料 #{processed_data.size} 筆"
 
   third_step_filter_data.each do |stock_symbol, stock_data|
-    current_price, price, current_amount, five_day_average_amount =
-      [current_price(stock_data), price(stock_data), current_amount(stock_data), (amount(stock_data).first(5).sum / 5)]
+    current_price, price, current_amount, ten_day_average_amount =
+      [current_price(stock_data), price(stock_data), current_amount(stock_data), (amount(stock_data).first(10).sum / 10)]
 
     next processed_data.delete(stock_symbol) unless price.first(20).max(3).include?(current_price) # 當日股價必須是近20天的前三高，代表突破或者突破拉回
-    next processed_data.delete(stock_symbol) if (current_amount / five_day_average_amount) < 1.3
+    next processed_data.delete(stock_symbol) if (current_amount / ten_day_average_amount) < 1.3
 
     puts "保留 #{stock_symbol} #{stock_data['company_name']}"
   end
@@ -213,7 +213,7 @@ task :fifth_step_filter do
   fourth_step_filter_data.each do |stock_symbol, stock_data|
     ma5, ma20 = [ma5(stock_data), ma20(stock_data)]
 
-    next processed_data.delete(stock_symbol) unless (ma5 / ma20).between?(1.02, 1.05) # 週線跟月線差太遠，就代表漲一段了
+    next processed_data.delete(stock_symbol) unless (ma5 / ma20).between?(1.005, 1.05) # 週線跟月線差太遠，就代表漲一段了
 
     puts "保留 #{stock_symbol} #{stock_data['company_name']}"
   end
