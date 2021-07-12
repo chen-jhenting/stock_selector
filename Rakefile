@@ -3,6 +3,7 @@
 require 'net/http'
 require 'JSON'
 require 'date'
+require 'fileutils'
 
 # 有參考意義的會打勾
 
@@ -35,7 +36,7 @@ CONDUCT_ORDER = {
 #     'amount' => [1, 2, 3, 4],
 #     'ma5' => 123,
 #     'ma20' => 555,
-#     'mq60' => 1111,
+#     'ma60' => 1111,
 #   },
 # }
 
@@ -70,12 +71,6 @@ task :query_stock_info do
 
   File.open('primary_stock_data.txt', 'wb') { |f| f.write(stock_data.to_json) }
   puts '已收集近 60 天股票資料，請查閱 primary_stock_data.txt'
-end
-
-def query_data_from_twse(query_date)
-  uri = URI("https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date=#{query_date}&type=ALL")
-  response = Net::HTTP.get(uri)
-  JSON.parse(response)['data9']
 end
 
 def extract_used_value(data)
@@ -181,7 +176,7 @@ end
 
 #-------------------------------------------------------------------------------------------------------
 
-desc '篩選符合 當日股價 帶量 突破 20 日高點'
+desc '篩選符合 當日股價 帶量 突破 20 日高點或是突破拉回'
 task :fourth_step_filter do
   puts '開始第四步篩選，當日股價 帶量 突破'
   third_step_filter_data = read_file('third_step_filter.txt')
@@ -192,8 +187,8 @@ task :fourth_step_filter do
     current_price, price, current_amount, five_day_average_amount =
       [current_price(stock_data), price(stock_data), current_amount(stock_data), (amount(stock_data).first(5).sum / 5)]
 
-    next processed_data.delete(stock_symbol) if current_price != price.first(20).max
-    next processed_data.delete(stock_symbol) if (current_amount / five_day_average_amount) > 1.5
+    next processed_data.delete(stock_symbol) unless price.first(20).max(3).include?(current_price) # 當日股價必須是近20天的前三高，代表突破或者突破拉回
+    next processed_data.delete(stock_symbol) if (current_amount / five_day_average_amount) > 1.3
 
     puts "保留 #{stock_symbol} #{stock_data['company_name']}"
   end
@@ -216,9 +211,9 @@ task :fifth_step_filter do
   puts "原始資料 #{processed_data.size} 筆"
 
   fourth_step_filter_data.each do |stock_symbol, stock_data|
-    current_price, ma20 = [current_price(stock_data), ma20(stock_data)]
+    ma5, ma20 = [ma5(stock_data), ma20(stock_data)]
 
-    next processed_data.delete(stock_symbol) if (current_price / ma20) <= 1.15
+    next processed_data.delete(stock_symbol) unless (ma5 / ma20).between?(1.05, 1.1) # 週線跟月線差太遠，就代表漲一段了
 
     puts "保留 #{stock_symbol} #{stock_data['company_name']}"
   end
@@ -235,11 +230,29 @@ end
 #-------------------------------------------------------------------------------------------------------
 desc '從收集資料，第一步篩選....到第五步篩選'
 task :daily_stock_selection do
+  system 'rake query_stock_info'
   system 'rake "first_step_filter[1000, 20, 100]"'
   system 'rake "second_step_filter[1000]"'
   system 'rake third_step_filter'
   system 'rake fourth_step_filter'
   system 'rake fifth_step_filter'
+
+  date = Date.today
+  time = nil
+  until time
+    query_date = date.strftime('%Y%m%d')
+    if query_data_from_twse(query_date)
+      time = query_date
+    else
+      sleep(3)
+    end
+  end
+
+  Dir.mkdir time unless File.exist?(time)
+
+  FILE_TABLE.each do |file, _description|
+    FileUtils.move file, "#{time}/#{file}"
+  end
 end
 
 #-------------------------------------------------------------------------------------------------------
@@ -292,4 +305,10 @@ end
 
 def ma60(stock_data)
   stock_data['ma60']
+end
+
+def query_data_from_twse(query_date)
+  uri = URI("https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date=#{query_date}&type=ALL")
+  response = Net::HTTP.get(uri)
+  JSON.parse(response)['data9']
 end
